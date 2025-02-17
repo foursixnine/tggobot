@@ -2,19 +2,34 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
+	"strings"
+
+	"time"
 
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
 func main() {
 	fmt.Println("Hello World")
+	if os.Getenv("TELEGRAM_APITOKEN") == "" {
+		fmt.Println("TELEGRAM_APITOKEN is not set")
+		os.Exit(1)
+	}
+
+	if os.Getenv("BRAIN_LOCATION") == "" {
+		fmt.Println("BRAIN_LOCATION is not set")
+		os.Exit(1)
+	}
+
 	bot, err := tg.NewBotAPI(os.Getenv("TELEGRAM_APITOKEN"))
 	if err != nil {
 		panic(err)
 	}
 
-	bot.Debug = true
+	bot.Debug = false
+	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	// Create a new UpdateConfig struct with an offset of 0. Offsets are used
 	// to make sure Telegram knows we've handled previous values and we don't
@@ -37,43 +52,86 @@ func main() {
 		if update.Message == nil {
 			continue
 		}
-		processUpdate(*update.Message, bot)
-		// Now that we know we've gotten a new message, we can construct a
-		// reply! We'll take the Chat ID and Text from the incoming message
-		// and use it to create a new message.
-		msg := tg.NewMessage(update.Message.Chat.ID, update.Message.Text)
-		// We'll also say that this message is a reply to the previous message.
-		// For any other specifications than Chat ID or Text, you'll need to
-		// set fields on the `MessageConfig`.
-		msg.ReplyToMessageID = update.Message.MessageID
 
-		// Okay, we're sending our message off! We don't care about the message
-		// we just sent, so we'll discard it.
-		if _, err := bot.Send(msg); err != nil {
-			// Note that panics are a bad way to handle errors. Telegram can
-			// have service outages or network errors, you should retry sending
-			// messages or more gracefully handle failures.
+		if update.Message.IsCommand() { // ignore any non-command Messages
+			processCommand(update.Message, bot)
+			continue
+		}
+
+		reply := tg.NewMessage(update.Message.Chat.ID, "Got message, processing")
+		reply.ReplyToMessageID = update.Message.MessageID
+
+		var messageID int
+		response, err := bot.Send(reply)
+		if err != nil {
 			panic(err)
 		}
+
+		messageID = response.MessageID
+		processUpdate(messageID, *update.Message, bot)
+		updateMessage(messageID, response.Chat.ID, bot, "Has been processed")
 
 	}
 
 }
 
-func processUpdate(m tg.Message, b *tg.BotAPI) {
+func processCommand(m *tg.Message, b *tg.BotAPI) {
+
+	msg := tg.NewMessage(m.Chat.ID, "")
+	switch m.Command() {
+	case "ping":
+		msg.Text = "pong"
+	default:
+		msg.Text = "I don't know that command, I know /ping"
+	}
+	_, err := b.Send(msg)
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 	fmt.Println("got message from:", m.From.FirstName)
 	fmt.Println("I am:", b.Self.FirstName)
-	reply := tg.NewMessage(m.Chat.ID, "Got message, processing")
-	reply.ReplyToMessageID = m.MessageID
-	// we could use a context here to pass data around
-	if response, err := b.Send(reply); err != nil {
-		panic(err)
-	} else {
-		fmt.Println("do busy work")
-		rpl := tg.NewEditMessageText(m.Chat.ID, response.MessageID, "Message is edited here")
-		if _, err := b.Send(rpl); err != nil {
-			panic(err)
+
+	Brain := newBrain(os.Getenv("BRAIN_LOCATION"))
+	Brain.Text = strings.Replace(m.Text, "\n", " ", -1)
+
+	// lets extract the entities, we only care about links
+	for _, entity := range m.Entities {
+		switch entity.Type {
+		case "url":
+			log.Println("Got a link: ", m.Text) // simple URL has nothing
+			Brain.Text = m.Text                 // lets reassign, we don't have a problem with simple urls
+		case "text_link":
+			// get the string slice for a given entity
+			link_to := fmt.Sprintf("[%s](%s)", m.Text[entity.Offset:entity.Offset+entity.Length], entity.URL)
+			Brain.Links = append(Brain.Links, link_to)
+		default:
+			log.Println("Got something else of type ", entity.Type)
 		}
 	}
 
+	log.Println("Contents of brain links:", Brain.Links)
+	log.Println("Contents of brain Text:", Brain.Text)
+	chatID := m.Chat.ID
+	updateMessage(messageID, chatID, b, "Message is edited again")
+	if saveToBrain(Brain) {
+		updateMessage(messageID, chatID, b, "Sucessfully appended to brain")
+	}
+
+}
+
+func updateMessage(messageID int, chatID int64, b *tg.BotAPI, t string) {
+	rpl := tg.NewEditMessageText(chatID, messageID, t)
+	_, err := b.Send(rpl)
+	if err != nil {
+		panic(err)
+	}
+
+	time.Sleep(2 * time.Second)
+}
+
+func getTitleofLink(s string) {
+	fmt.Println("Getting title of link for ", s)
 }
