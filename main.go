@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
@@ -31,7 +32,15 @@ func main() {
 		panic(err)
 	}
 
-	bot.Debug = false
+	value, exists := getEnv("DEBUG")
+	if exists {
+		boolean, err := strconv.ParseBool(value)
+		if err != nil {
+			panic(err)
+		}
+		bot.Debug = boolean
+	}
+
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
 	// Create a new UpdateConfig struct with an offset of 0. Offsets are used
@@ -117,8 +126,23 @@ func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 
 		case "text_link":
 			// get the string slice for a given entity
-			link_to := fmt.Sprintf("[%s](%s)", m.Text[entity.Offset:entity.Offset+entity.Length], entity.URL)
+			var link_to string
+			// check if its a message from HN use what it provides
+			if m.ForwardFromChat != nil && m.ForwardFromChat.UserName == "hackernewslive" {
+				log.Println("Link is from Hacker News - Making it simple")
+				link_to = fmt.Sprintf("[%s](%s)", m.Text[entity.Offset:entity.Offset+entity.Length], entity.URL)
+			} else {
+				title, err := getTitleofLink(entity.URL)
+				if err != nil {
+					log.Println("Error getting title of link")
+					log.Println("leaving entry as is")
+					link_to = entity.URL
+				} else {
+					link_to = fmt.Sprintf("[%s](%s)", title, entity.URL)
+				}
+			}
 			Brain.Links = append(Brain.Links, link_to)
+
 		default:
 			log.Println("Got something else of type ", entity.Type)
 		}
@@ -146,11 +170,13 @@ func updateMessage(messageID int, chatID int64, b *tg.BotAPI, t string) {
 
 func getTitleofLink(s string) (string, error) {
 	response, err := http.Get(s)
-	defer response.Body.Close()
+
 	if err != nil {
 		fmt.Println("Error getting link", err)
 		return "", err
 	}
+
+	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
 		fmt.Println("Error getting link", response.Status)
@@ -168,4 +194,11 @@ func getTitleofLink(s string) (string, error) {
 
 	return title, nil
 
+}
+
+func getEnv(key string) (string, bool) {
+	if value, ok := os.LookupEnv(key); ok {
+		return value, true
+	}
+	return "", false
 }
