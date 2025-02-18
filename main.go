@@ -3,8 +3,11 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+
+	"github.com/PuerkitoBio/goquery"
 
 	"time"
 
@@ -102,7 +105,16 @@ func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 		switch entity.Type {
 		case "url":
 			log.Println("Got a link: ", m.Text) // simple URL has nothing
-			Brain.Text = m.Text                 // lets reassign, we don't have a problem with simple urls
+			title, err := getTitleofLink(m.Text)
+			if err != nil {
+				log.Println("Error getting title of link")
+				log.Println("leaving entry as is")
+				Brain.Text = m.Text // lets reassign, we don't have a problem with simple urls
+				break
+			}
+
+			Brain.Text = "[" + title + "](" + m.Text + ")" // lets reassign, we don't have a problem with simple urls
+
 		case "text_link":
 			// get the string slice for a given entity
 			link_to := fmt.Sprintf("[%s](%s)", m.Text[entity.Offset:entity.Offset+entity.Length], entity.URL)
@@ -132,6 +144,28 @@ func updateMessage(messageID int, chatID int64, b *tg.BotAPI, t string) {
 	time.Sleep(2 * time.Second)
 }
 
-func getTitleofLink(s string) {
-	fmt.Println("Getting title of link for ", s)
+func getTitleofLink(s string) (string, error) {
+	response, err := http.Get(s)
+	defer response.Body.Close()
+	if err != nil {
+		fmt.Println("Error getting link", err)
+		return "", err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		fmt.Println("Error getting link", response.Status)
+		return "", err
+	}
+
+	// Load the HTML document
+	doc, err := goquery.NewDocumentFromReader(response.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	title := doc.Find("title").Text()
+	fmt.Println("found title", title)
+
+	return title, nil
+
 }
