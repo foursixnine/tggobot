@@ -3,15 +3,12 @@ package main
 import (
 	"fmt"
 	"log"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
 
-	"github.com/PuerkitoBio/goquery"
-
-
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"zarate.co/tggobot/element"
 )
 
 func main() {
@@ -107,22 +104,14 @@ func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 	log.Println("I am:", b.Self.FirstName)
 
 	Brain := newBrain(os.Getenv("BRAIN_LOCATION"))
-	Brain.Text = strings.Replace(m.Text, "\n", " ", -1)
+	Brain.Text = strings.ReplaceAll(m.Text, "\n", " ")
 
 	// lets extract the entities, we only care about links
 	for _, entity := range m.Entities {
 		switch entity.Type {
 		case "url":
-			log.Println("Got a link: ", m.Text) // simple URL has nothing
-			title, err := getTitleofLink(m.Text)
-			if err != nil {
-				log.Println("Error getting title of link")
-				log.Println("leaving entry as is")
-				Brain.Text = m.Text // lets reassign, we don't have a problem with simple urls
-				break
-			}
-
-			Brain.Text = "[" + title + "](" + m.Text + ")" // lets reassign, we don't have a problem with simple urls
+			e := element.GenericElement{Element: element.Element{Message: m}}
+			Brain.Text = e.MakeMarkdown()
 
 		case "text_link":
 			// get the string slice for a given entity
@@ -130,16 +119,12 @@ func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 			// check if its a message from HN use what it provides
 			if m.ForwardFromChat != nil && m.ForwardFromChat.UserName == "hackernewslive" {
 				log.Println("Link is from Hacker News - Making it simple")
-				link_to = fmt.Sprintf("[%s](%s)", m.Text[entity.Offset:entity.Offset+entity.Length], entity.URL)
+				e := element.HNElement{Element: element.Element{Message: m}}
+				link_to = e.MakeMarkdown(entity)
 			} else {
-				title, err := getTitleofLink(entity.URL)
-				if err != nil {
-					log.Println("Error getting title of link")
-					log.Println("leaving entry as is")
-					link_to = entity.URL
-				} else {
-					link_to = fmt.Sprintf("[%s](%s)", title, entity.URL)
-				}
+				log.Println("Its text with a link")
+				e := element.TextLinkElement{Element: element.Element{Message: m}}
+				link_to = e.MakeMarkdown(entity)
 			}
 			Brain.Links = append(Brain.Links, link_to)
 
@@ -151,7 +136,7 @@ func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 	log.Println("Contents of brain links:\t", Brain.Links)
 	log.Println("Contents of brain Text:\t", Brain.Text)
 	chatID := m.Chat.ID
-	updateMessage(messageID, chatID, b, "Message is edited again")
+	updateMessage(messageID, chatID, b, "updating...")
 	if saveToBrain(Brain) {
 		updateMessage(messageID, chatID, b, "Sucessfully appended to brain")
 	}
@@ -164,34 +149,6 @@ func updateMessage(messageID int, chatID int64, b *tg.BotAPI, t string) {
 	if err != nil {
 		panic(err)
 	}
-}
-
-func getTitleofLink(s string) (string, error) {
-	response, err := http.Get(s)
-
-	if err != nil {
-		fmt.Println("Error getting link", err)
-		return "", err
-	}
-
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		fmt.Println("Error getting link", response.Status)
-		return "", err
-	}
-
-	// Load the HTML document
-	doc, err := goquery.NewDocumentFromReader(response.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	title := doc.Find("title").Text()
-	fmt.Println("found title", title)
-
-	return title, nil
-
 }
 
 func getEnv(key string) (string, bool) {
