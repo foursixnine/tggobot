@@ -15,7 +15,8 @@ import (
 )
 
 func main() {
-	fmt.Println("Hello World")
+	log.SetFlags(log.LstdFlags | log.Lshortfile | log.Lmsgprefix)
+	log.Println("Hello World")
 	if os.Getenv("TELEGRAM_APITOKEN") == "" {
 		fmt.Println("TELEGRAM_APITOKEN is not set")
 		os.Exit(1)
@@ -102,8 +103,8 @@ func processCommand(m *tg.Message, b *tg.BotAPI) {
 }
 
 func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
-	fmt.Println("got message from:", m.From.FirstName)
-	fmt.Println("I am:", b.Self.FirstName)
+	log.Println("got message from:", m.From.FirstName)
+	log.Println("I am:", b.Self.FirstName)
 
 	Brain := newBrain(os.Getenv("BRAIN_LOCATION"))
 	Brain.Text = strings.Replace(m.Text, "\n", " ", -1)
@@ -143,12 +144,12 @@ func processUpdate(messageID int, m tg.Message, b *tg.BotAPI) {
 			Brain.Links = append(Brain.Links, link_to)
 
 		default:
-			log.Println("Got something else of type ", entity.Type)
+			log.Println("Got something else of type: ", entity.Type)
 		}
 	}
 
-	log.Println("Contents of brain links:", Brain.Links)
-	log.Println("Contents of brain Text:", Brain.Text)
+	log.Println("Contents of brain links:\t", Brain.Links)
+	log.Println("Contents of brain Text:\t", Brain.Text)
 	chatID := m.Chat.ID
 	updateMessage(messageID, chatID, b, "Message is edited again")
 	if saveToBrain(Brain) {
