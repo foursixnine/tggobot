@@ -10,7 +10,6 @@ import (
 
 	"github.com/PuerkitoBio/goquery"
 
-	"time"
 
 	tg "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -164,8 +163,6 @@ func updateMessage(messageID int, chatID int64, b *tg.BotAPI, t string) {
 	if err != nil {
 		panic(err)
 	}
-
-	time.Sleep(2 * time.Second)
 }
 
 func getTitleofLink(s string) (string, error) {
