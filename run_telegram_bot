@@ -1,4 +1,5 @@
 #!/usr/bin/env bash -e
 # set BRAIN_LOCATION=${BRAIN_LOCATION:="00-Captured.md"}
+go fmt ./...
 source .env || (echo "can't run bot, token not found" && exit 2)
 go run . |& tee log/tgrun-$(date +%s).log
