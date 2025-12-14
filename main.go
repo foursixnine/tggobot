@@ -55,33 +55,35 @@ func main() {
 
 	// Let's go through each update that we're getting from Telegram.
 	for update := range updates {
-		// Telegram can send many types of updates depending on what your Bot
-		// is up to. We only want to look at messages for now, so we can
-		// discard any other updates.
-		if update.Message == nil {
-			continue
-		}
-
-		if update.Message.IsCommand() { // ignore any non-command Messages
-			processCommand(update.Message, bot)
-			continue
-		}
-
-		reply := tg.NewMessage(update.Message.Chat.ID, "Got message, processing")
-		reply.ReplyToMessageID = update.Message.MessageID
-
-		var messageID int
-		response, err := bot.Send(reply)
-		if err != nil {
-			panic(err)
-		}
-
-		messageID = response.MessageID
-		processUpdate(messageID, *update.Message, bot)
-		updateMessage(messageID, response.Chat.ID, bot, "Has been processed")
-
+		go updateHandler(&update, bot)
 	}
 
+}
+
+func updateHandler(update *tg.Update, bot *tg.BotAPI) {
+	// Telegram can send many types of updates depending on what your Bot
+	// is up to. We only want to look at messages for now, so we can
+	// discard any other updates.
+	if update.Message == nil {
+		return
+	}
+
+	if update.Message.IsCommand() { // ignore any non-command Messages
+		processCommand(update.Message, bot)
+		return
+	}
+
+	reply := tg.NewMessage(update.Message.Chat.ID, "Got message, processing")
+	reply.ReplyToMessageID = update.Message.MessageID
+
+	response, err := bot.Send(reply)
+	if err != nil {
+		panic(err)
+	}
+
+	messageID := response.MessageID
+	processUpdate(messageID, *update.Message, bot)
+	updateMessage(messageID, response.Chat.ID, bot, "Has been processed")
 }
 
 func processCommand(m *tg.Message, b *tg.BotAPI) {
