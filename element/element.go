@@ -1,6 +1,7 @@
 package element
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -39,28 +40,31 @@ func (e Element) getTitleofLink() (string, error) {
 	response, err := http.Get(e.Message.Text)
 
 	if err != nil {
-		log.Println("Error getting link: ", err)
+		log.Println("Element: Error getting link: ", err)
 		return "", err
 	}
 
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		log.Println("Error getting link: ", response.Status)
-		return "", err
+		log.Println("Element: Error getting link: ", response.Status)
+		return "", fmt.Errorf("Http status response: %s", response.Status)
 	}
 
 	// Load the HTML document
 	doc, err := goquery.NewDocumentFromReader(response.Body)
 	if err != nil {
-		log.Fatal("Could not read document", err)
+		log.Fatal("Element: Could not read document", err)
+		return "", errors.New("Document can't be read")
 	}
 
 	title := doc.Find("title").Text()
-	log.Println("found title", title)
+	if title == "" {
+		log.Fatal("Element: title element is empty or not found: ", title, e.Message.Text)
+		return e.Message.Text, nil
+	}
 
 	return title, nil
-
 }
 
 type GenericElement struct {
